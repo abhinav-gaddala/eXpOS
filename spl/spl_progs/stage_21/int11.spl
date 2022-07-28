@@ -1,0 +1,54 @@
+alias userSP R10;
+userSP=SP;
+[PROCESS_TABLE+([SYSTEM_STATUS_TABLE+1]*16)+13]=SP; //saving user stack pointer
+SP=[PROCESS_TABLE+([SYSTEM_STATUS_TABLE+1]*16)+11]*512-1;//switching to kernal stack
+alias functionNum R9;
+functionNum=[[PTBR+2*((userSP-5)/512)]*512 + (userSP-5)%512];
+
+//getPID
+if(functionNum==11)then
+	R0=[SYSTEM_STATUS_TABLE+1];
+	[[PTBR+2*((userSP-1)/512)]*512 +(userSP-1)%512]=R0;
+endif;
+
+//getPPID
+if(functionNum==12)then
+	R0=[PROCESS_TABLE+([SYSTEM_STATUS_TABLE+1]*16)+2];
+	[[PTBR+2*((userSP-1)/512)]*512 +(userSP-1)%512]=R0;
+endif;
+
+//wait
+if(functionNum==13)then
+	[PROCESS_TABLE+([SYSTEM_STATUS_TABLE+1]*16)+9]=13;
+	alias PID R12;
+	PID=[[PTBR+2*((userSP-4)/512)]*512 +(userSP-4)%512];
+	if(PID==[SYSTEM_STATUS_TABLE+1]||PID<0||PID>15||[PROCESS_TABLE+(PID*16)+4]==TERMINATED)then
+		R0=-1;
+        [[PTBR+2*((userSP-1)/512)]*512 + (userSP-1)%512]=R0;
+        [PROCESS_TABLE+([SYSTEM_STATUS_TABLE+1]*16)+9]=0;
+        SP=userSP;
+        ireturn;
+	endif;
+	[PROCESS_TABLE+([SYSTEM_STATUS_TABLE+1]*16)+4]=WAIT_PROCESS;
+	[PROCESS_TABLE+([SYSTEM_STATUS_TABLE+1]*16)+5]=PID;
+	multipush(R10,R11,R12);
+    call SCHEDULER;
+    multipop(R10,R11,R12);
+    [PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=0;
+endif;
+
+//signal
+if(functionNum==14)then
+	[PROCESS_TABLE+([SYSTEM_STATUS_TABLE+1]*16)+9]=14;
+	alias i R13;
+	i=0;
+	while(i<=15)do
+		if([PROCESS_TABLE+(i*16)+4]==WAIT_PROCESS&&[PROCESS_TABLE+(i*16)+5]==[SYSTEM_STATUS_TABLE+1])then
+			[PROCESS_TABLE+(i*16)+4]=READY;
+		endif;
+		i=i+1;
+	endwhile;
+	[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=0;
+endif;
+SP=userSP;
+ireturn;
